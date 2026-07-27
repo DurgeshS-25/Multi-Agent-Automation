@@ -1,0 +1,20 @@
+aboutapi_info.txt
+# Environment & secrets
+.env
+*.env
+!.env.example
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs / local data
+*.log
