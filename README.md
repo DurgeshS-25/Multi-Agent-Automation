@@ -13,8 +13,8 @@ self-critiques the result before returning a cited report.
 
 ## Status
 
-✅ Phase 1: Single-agent baseline (search → summarize) — complete
-🚧 Phase 2: Planner agent (query decomposition) — next
+- ✅ Phase 1: Single-agent baseline (search → summarize) — complete
+- 🚧 Phase 2: Planner agent (query decomposition) — next
 
 ## Setup
 
