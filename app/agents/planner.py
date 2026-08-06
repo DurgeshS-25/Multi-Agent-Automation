@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 
 from google import genai
 from pydantic import BaseModel, Field
@@ -18,6 +19,16 @@ class PlanResult(BaseModel):
         ...,
         description="3-5 focused sub-questions the main question decomposes into.",
     )
+
+
+@dataclass
+class PlanMeta:
+    """Planner output plus measurement metadata (for evals)."""
+    sub_questions: list[str]
+    raw_count: int       # how many the model returned before validation
+    valid_count: int     # how many survived validation
+    in_tokens: int
+    out_tokens: int
 
 
 class PlannerError(Exception):
@@ -77,25 +88,27 @@ class PlannerAgent:
         # Clamp the upper bound to control downstream search cost
         return cleaned[:MAX_SUB_QUESTIONS]
 
+    def _generate(self, question: str):
+        """Shared Gemini call returning the raw response (with retry)."""
+        prompt = _PLANNER_PROMPT.format(question=question)
+        return with_retry(
+            lambda: self._client.models.generate_content(
+                model=self._model,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": PlanResult,
+                },
+            )
+        )
+
     def plan(self, question: str) -> list[str]:
         """Decompose a question into validated sub-questions."""
         if not question or not question.strip():
             raise PlannerError("Question cannot be empty.")
 
-        prompt = _PLANNER_PROMPT.format(question=question)
-
         try:
-            response = with_retry(
-                lambda: self._client.models.generate_content(
-                    model=self._model,
-                    contents=prompt,
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_schema": PlanResult,
-                    },
-                )
-            )
-            # The SDK parses the schema-constrained JSON for us
+            response = self._generate(question)
             plan: PlanResult = response.parsed
         except Exception as e:
             raise PlannerError(f"Planning failed: {e}") from e
@@ -104,6 +117,32 @@ class PlannerAgent:
             raise PlannerError("Planner returned no sub-questions.")
 
         return self._validate(plan.sub_questions)
+
+    def plan_with_meta(self, question: str) -> PlanMeta:
+        """Like plan(), but also returns measurement metadata for evals."""
+        if not question or not question.strip():
+            raise PlannerError("Question cannot be empty.")
+
+        try:
+            response = self._generate(question)
+            plan: PlanResult = response.parsed
+            usage = response.usage_metadata
+        except Exception as e:
+            raise PlannerError(f"Planning failed: {e}") from e
+
+        if not plan or not plan.sub_questions:
+            raise PlannerError("Planner returned no sub-questions.")
+
+        raw = plan.sub_questions
+        validated = self._validate(raw)
+
+        return PlanMeta(
+            sub_questions=validated,
+            raw_count=len(raw),
+            valid_count=len(validated),
+            in_tokens=usage.prompt_token_count,
+            out_tokens=usage.candidates_token_count,
+        )
 
 
 planner_agent = PlannerAgent()
