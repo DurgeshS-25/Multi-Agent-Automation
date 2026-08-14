@@ -1,5 +1,6 @@
+import asyncio
 import time
-from typing import Callable, TypeVar
+from typing import Awaitable, Callable, TypeVar
 
 T = TypeVar("T")
 
@@ -21,6 +22,22 @@ def with_retry(fn: Callable[[], T], attempts: int = 3) -> T:
             last_err = e
             if any(marker in str(e) for marker in _TRANSIENT_MARKERS):
                 time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+                continue
+            raise
+    raise RuntimeError(f"Failed after {attempts} retries: {last_err}")
+
+
+async def with_retry_async(fn: Callable[[], Awaitable[T]], attempts: int = 3) -> T:
+    """Async twin of with_retry. Awaits fn(), retrying transient failures
+    with exponential backoff using a non-blocking async sleep."""
+    last_err = None
+    for attempt in range(attempts):
+        try:
+            return await fn()
+        except Exception as e:
+            last_err = e
+            if any(marker in str(e) for marker in _TRANSIENT_MARKERS):
+                await asyncio.sleep(2 ** attempt)  # non-blocking
                 continue
             raise
     raise RuntimeError(f"Failed after {attempts} retries: {last_err}")
