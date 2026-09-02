@@ -35,7 +35,18 @@ verbatim. Organize by theme, not by sub-question.
 Main question: {question}
 
 Facts (grouped by sub-question):
-{facts_block}"""
+{facts_block}{revision_block}"""
+
+
+_REVISION_TEMPLATE = """
+
+IMPORTANT — This is a REVISION. A previous draft contained claims NOT supported \
+by the facts above. Rewrite the report so every claim is fully supported. \
+Remove or correct these specific unsupported claims:
+{claims}
+
+Previous draft (for reference — fix its problems, keep what was well-supported):
+{previous}"""
 
 
 class Synthesizer:
@@ -53,7 +64,6 @@ class Synthesizer:
         for finding in findings:
             if finding.error or not finding.facts:
                 continue
-            # Register this finding's sources into the global numbered list
             local_markers = []
             for url in finding.sources:
                 if url not in source_index:
@@ -70,14 +80,32 @@ class Synthesizer:
         return "\n\n".join(blocks), sources
 
     async def synthesize(
-        self, question: str, findings: list[SubQuestionFacts]
+        self,
+        question: str,
+        findings: list[SubQuestionFacts],
+        previous_report: str | None = None,
+        unsupported_claims: list[str] | None = None,
     ) -> SynthesizedReport:
+        """Synthesize a report. If previous_report + unsupported_claims are
+        given, this is a revision pass that fixes the flagged claims."""
         facts_block, sources = self._format_facts(findings)
 
         if not facts_block:
             raise SynthesizerError("No facts available to synthesize.")
 
-        prompt = _SYNTH_PROMPT.format(question=question, facts_block=facts_block)
+        # Build the optional revision block
+        revision_block = ""
+        if previous_report and unsupported_claims:
+            claims_str = "\n".join(f"  - {c}" for c in unsupported_claims)
+            revision_block = _REVISION_TEMPLATE.format(
+                claims=claims_str, previous=previous_report
+            )
+
+        prompt = _SYNTH_PROMPT.format(
+            question=question,
+            facts_block=facts_block,
+            revision_block=revision_block,
+        )
 
         try:
             response = await with_retry_async(
