@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     search_depth: str = "basic"
     max_search_results: int = 5
-
+    max_concurrency: int = 2
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 
 

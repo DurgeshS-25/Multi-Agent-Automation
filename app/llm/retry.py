@@ -26,6 +26,21 @@ def with_retry(fn: Callable[[], T], attempts: int = 3) -> T:
             raise
     raise RuntimeError(f"Failed after {attempts} retries: {last_err}")
 
+async def gather_bounded(coro_fns: list, limit: int):
+    """Run coroutine-returning callables with at most `limit` in flight.
+
+    Like asyncio.gather, but a semaphore caps how many run concurrently —
+    so we get parallelism without overwhelming API rate limits. Each item
+    in coro_fns is a zero-arg callable that returns a coroutine.
+    """
+    semaphore = asyncio.Semaphore(limit)
+
+    async def _run(fn):
+        async with semaphore:
+            return await fn()
+
+    return await asyncio.gather(*(_run(fn) for fn in coro_fns))
+
 
 async def with_retry_async(fn: Callable[[], Awaitable[T]], attempts: int = 3) -> T:
     """Async twin of with_retry. Awaits fn(), retrying transient failures
