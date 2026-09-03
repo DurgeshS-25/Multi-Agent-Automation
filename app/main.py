@@ -5,23 +5,21 @@ from app.search.tavily_client import tavily_search, SearchError
 from app.llm.gemini_client import gemini_summarizer, SummarizerError
 from app.agents.planner import planner_agent, PlannerError
 from app.agents.orchestrator import orchestrator, OrchestratorError
+from app.graph.research_graph import research_graph
 
 app = FastAPI(
     title="Multi-Agent Automation",
-    description="Research assistant API — plan, search the web, and return grounded, cited answers.",
-    version="0.3.0",
+    description="Research assistant API — plan, search, synthesize, and self-critique cited reports.",
+    version="0.5.0",
 )
 
 
 # ---- Request / Response schemas ----
 
 class PlanRequest(BaseModel):
-    question: str = Field(
-        ...,
-        min_length=3,
+    question: str = Field(..., min_length=3,
         description="The broad question to decompose into sub-questions.",
-        examples=["Compare REST and GraphQL for a high-traffic API"],
-    )
+        examples=["Compare REST and GraphQL for a high-traffic API"])
 
 
 class PlanResponse(BaseModel):
@@ -31,17 +29,12 @@ class PlanResponse(BaseModel):
 
 
 class ResearchRequest(BaseModel):
-    question: str = Field(
-        ...,
-        min_length=3,
+    question: str = Field(..., min_length=3,
         description="The research question to answer.",
-        examples=["What is retrieval augmented generation?"],
-    )
-    include_plan: bool = Field(
-        default=False,
-        description="If true, also decompose the question into sub-questions "
-                    "(planning only; full per-sub-question search is in /research/deep).",
-    )
+        examples=["What is retrieval augmented generation?"])
+    include_plan: bool = Field(default=False,
+        description="If true, also decompose into sub-questions (planning only; "
+                    "full per-sub-question search is in /research/deep).")
 
 
 class ResearchResponse(BaseModel):
@@ -52,12 +45,9 @@ class ResearchResponse(BaseModel):
 
 
 class DeepResearchRequest(BaseModel):
-    question: str = Field(
-        ...,
-        min_length=3,
+    question: str = Field(..., min_length=3,
         description="A broad question to research across multiple sub-questions.",
-        examples=["Compare REST and GraphQL for a high-traffic API"],
-    )
+        examples=["Compare REST and GraphQL for a high-traffic API"])
 
 
 class SubQuestionFinding(BaseModel):
@@ -73,11 +63,35 @@ class DeepResearchResponse(BaseModel):
     findings: list[SubQuestionFinding]
 
 
+class ReportRequest(BaseModel):
+    question: str = Field(..., min_length=3,
+        description="A broad question to research and synthesize into a report.",
+        examples=["Compare REST and GraphQL for a high-traffic API"])
+
+
+class ReportResponse(BaseModel):
+    question: str
+    sub_questions: list[str]
+    report: str
+    sources: list[str]
+    approved: bool
+    iterations: int
+    remaining_issues: list[str] = []
+
+
+class GraphReportResponse(BaseModel):
+    question: str
+    sub_questions: list[str]
+    report: str
+    sources: list[str]
+    approved: bool
+    iterations: int
+
+
 # ---- Routes ----
 
 @app.get("/health")
 def health() -> dict:
-    """Simple liveness check."""
     return {"status": "ok"}
 
 
@@ -88,7 +102,6 @@ def plan(request: PlanRequest) -> PlanResponse:
         sub_questions = planner_agent.plan(request.question)
     except PlannerError as e:
         raise HTTPException(status_code=502, detail=f"Planning failed: {e}")
-
     return PlanResponse(
         question=request.question,
         sub_questions=sub_questions,
@@ -126,12 +139,8 @@ def research(request: ResearchRequest) -> ResearchResponse:
 
 @app.post("/research/deep", response_model=DeepResearchResponse)
 async def research_deep(request: DeepResearchRequest) -> DeepResearchResponse:
-    """Deep multi-agent pipeline: plan -> parallel search -> parallel extract.
-
-    Returns structured facts grouped by sub-question. NOTE: synthesis of
-    these findings into a single cited prose report is Phase 4 — this
-    endpoint returns the organized research, not yet a final essay.
-    """
+    """Deep pipeline: plan -> parallel search -> parallel extract.
+    Returns structured facts grouped by sub-question (no synthesis)."""
     try:
         result = await orchestrator.run(request.question)
     except OrchestratorError as e:
@@ -149,4 +158,49 @@ async def research_deep(request: DeepResearchRequest) -> DeepResearchResponse:
             )
             for f in result.findings
         ],
+    )
+
+
+@app.post("/research/report", response_model=ReportResponse)
+async def research_report(request: ReportRequest) -> ReportResponse:
+    """Full pipeline (hand-rolled orchestrator): plan -> search -> extract ->
+    synthesize -> critique -> revise. Returns a cited report with approval
+    status and revision count."""
+    try:
+        result = await orchestrator.run_report(request.question)
+    except OrchestratorError as e:
+        raise HTTPException(status_code=502, detail=f"Report generation failed: {e}")
+
+    return ReportResponse(
+        question=result.question,
+        sub_questions=result.sub_questions,
+        report=result.report,
+        sources=result.sources,
+        approved=result.approved,
+        iterations=result.iterations,
+        remaining_issues=result.remaining_issues,
+    )
+
+
+@app.post("/research/graph", response_model=GraphReportResponse)
+async def research_graph_endpoint(request: ReportRequest) -> GraphReportResponse:
+    """Same full pipeline as /research/report, but orchestrated by LangGraph
+    (a compiled StateGraph) instead of the hand-rolled orchestrator. Provided
+    alongside /research/report to compare the two implementations."""
+    try:
+        final_state = await research_graph.ainvoke({
+            "question": request.question,
+            "iterations": 0,
+            "max_revisions": 2,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Graph research failed: {e}")
+
+    return GraphReportResponse(
+        question=final_state.get("question", request.question),
+        sub_questions=final_state.get("sub_questions", []),
+        report=final_state.get("report", ""),
+        sources=final_state.get("sources", []),
+        approved=final_state.get("approved", False),
+        iterations=final_state.get("iterations", 0),
     )
