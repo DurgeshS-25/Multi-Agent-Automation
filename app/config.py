@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     search_depth: str = "basic"
     max_search_results: int = 5
     max_concurrency: int = 2
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 # Single shared instance imported everywhere

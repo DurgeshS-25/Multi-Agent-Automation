@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Research Assistant</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --ink: #1a1c22;
+      --ink-soft: #2a2d36;
+      --edge: #363a45;
+      --paper: #fbfaf7;
+      --text-soft: #9aa0ac;
+      --placeholder: #6c7280;
+      --grounded: #2f7d5b;
+      --grounded-bg: #e8f2ec;
+      --flag: #b06a3a;
+      --flag-bg: #f6ece2;
+      --accent: #3a4a6b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--ink);
+      color: var(--paper);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 32px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--ink-soft);
+      border: 1px solid var(--edge);
+      border-radius: 12px;
+      padding: 28px;
+    }
+    h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .tagline { color: var(--text-soft); font-size: 14px; margin: 4px 0 22px; }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--edge);
+      border-radius: 9px;
+      padding: 3px;
+      margin-bottom: 22px;
+    }
+    .tab {
+      border: 0;
+      background: transparent;
+      color: var(--text-soft);
+      font: inherit;
+      font-size: 14px;
+      padding: 7px 0;
+      border-radius: 7px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .tab[aria-selected="true"] { background: var(--ink); color: var(--paper); font-weight: 600; }
+    .soon-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--flag-bg);
+      color: var(--flag);
+      padding: 1px 6px;
+      border-radius: 99px;
+    }
+    h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .hint { color: var(--text-soft); font-size: 14px; margin-bottom: 18px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      font: inherit;
+      color: var(--paper);
+      background: var(--ink);
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+    }
+    input::placeholder { color: var(--placeholder); }
+    input:focus-visible, button:focus-visible { outline: 2px solid #8fa3c9; outline-offset: 1px; }
+    .primary {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 11px;
+      font: inherit;
+      font-weight: 600;
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .primary:disabled { opacity: 0.55; cursor: progress; }
+    .link {
+      background: none;
+      border: 0;
+      color: var(--text-soft);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: underline;
+      margin-top: 14px;
+      display: inline-block;
+    }
+    .msg { display: none; font-size: 13.5px; border-radius: 8px; padding: 9px 12px; margin-bottom: 16px; }
+    .msg.show { display: block; }
+    .msg.error { background: var(--flag-bg); color: var(--flag); }
+    .msg.ok { background: var(--grounded-bg); color: var(--grounded); }
+    .soon { text-align: center; padding: 6px 0 2px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Research Assistant</h1>
+    <p class="tagline">Plan, search, synthesize and self-critique cited reports.</p>
+
+    <div class="msg" id="msg" role="alert"></div>
+
+    <!-- Sign in / Sign up tabs -->
+    <div id="view-auth">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-signin" aria-selected="true">Sign in</button>
+        <button class="tab" role="tab" id="tab-signup" aria-selected="false">
+          Sign up <span class="soon-badge">Soon</span>
+        </button>
+      </div>
+
+      <form id="form-signin" novalidate>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button class="primary" type="submit">Sign in</button>
+        <button class="link" type="button" id="to-forgot">Forgot password?</button>
+      </form>
+
+      <div id="panel-signup" class="soon" hidden>
+        <h2>Sign-ups are coming soon</h2>
+        <p class="hint">Access is invite-only for now. Public accounts will open in a future release.</p>
+      </div>
+    </div>
+
+    <!-- Set password (from invite or reset link) -->
+    <form id="form-setpw" novalidate hidden>
+      <h2 id="setpw-title">Set your password</h2>
+      <p class="hint">Use at least 10 characters. You'll use it with your email to sign in.</p>
+      <label for="new-pw">New password</label>
+      <input id="new-pw" type="password" autocomplete="new-password" required>
+      <label for="new-pw2">Confirm password</label>
+      <input id="new-pw2" type="password" autocomplete="new-password" required>
+      <button class="primary" type="submit">Save password</button>
+    </form>
+
+    <!-- Forgot password -->
+    <form id="form-forgot" novalidate hidden>
+      <h2>Reset your password</h2>
+      <p class="hint">We'll email a one-time link to set a new password.</p>
+      <label for="forgot-email">Email</label>
+      <input id="forgot-email" type="email" autocomplete="email" required>
+      <button class="primary" type="submit">Send reset link</button>
+      <button class="link" type="button" id="back-signin">Back to sign in</button>
+    </form>
+  </main>
+
+  <script>
+    // Read the link type BEFORE Supabase consumes the URL fragment.
+    const hashParams = new URLSearchParams(location.hash.slice(1));
+    const linkType = hashParams.get("type");               // "invite" | "recovery" | null
+    const linkError = hashParams.get("error_description");
+
+    const $ = (id) => document.getElementById(id);
+    const msg = $("msg");
+    const views = { auth: $("view-auth"), setpw: $("form-setpw"), forgot: $("form-forgot") };
+
+    function say(text, kind = "error") {
+      msg.textContent = text;
+      msg.className = `msg show ${kind}`;
+    }
+    function clearMsg() { msg.className = "msg"; }
+    function showView(name) {
+      for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
+    }
+    function safeNext() {
+      const next = new URLSearchParams(location.search).get("next");
+      return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/ui/";
+    }
+    async function busy(form, fn) {
+      const btn = form.querySelector(".primary");
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Please wait…";
+      try { await fn(); } finally { btn.disabled = false; btn.textContent = label; }
+    }
+
+    // Tabs
+    function selectTab(which) {
+      $("tab-signin").setAttribute("aria-selected", String(which === "signin"));
+      $("tab-signup").setAttribute("aria-selected", String(which === "signup"));
+      $("form-signin").hidden = which !== "signin";
+      $("panel-signup").hidden = which !== "signup";
+      clearMsg();
+    }
+    $("tab-signin").onclick = () => selectTab("signin");
+    $("tab-signup").onclick = () => selectTab("signup");
+    $("to-forgot").onclick = () => { clearMsg(); showView("forgot"); $("forgot-email").value = $("email").value; };
+    $("back-signin").onclick = () => { clearMsg(); showView("auth"); };
+
+    (async () => {
+      const config = await fetch("/auth/config").then((r) => r.json()).catch(() => null);
+      if (!config) { say("Can't reach the server. If it was idle, give it a minute to wake up, then refresh."); return; }
+      if (!config.enabled) { location.replace(safeNext()); return; }  // sign-in disabled (local dev)
+
+      const client = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" },
+      });
+      const { data: { session } } = await client.auth.getSession();
+
+      if (linkError) {
+        history.replaceState(null, "", location.pathname + location.search);
+        say("That link has expired or was already used. Ask for a new one.");
+      } else if ((linkType === "invite" || linkType === "recovery") && session) {
+        history.replaceState(null, "", location.pathname + location.search);
+        $("setpw-title").textContent = linkType === "invite" ? "Welcome, set your password" : "Choose a new password";
+        showView("setpw");
+        $("new-pw").focus();
+      } else if (session) {
+        location.replace(safeNext());
+        return;
+      }
+
+      $("form-signin").addEventListener("submit", (e) => {
+        e.preventDefault();
+        clearMsg();
+        const email = $("email").value.trim();
+        const password = $("password").value;
+        if (!email || !password) { say("Enter your email and password."); return; }
+        busy(e.target, async () => {
+          const { error } = await client.auth.signInWithPassword({ email, password });
+          if (error) { say(error.message); $("password").value = ""; $("password").focus(); return; }
+          location.replace(safeNext());
+        });
+      });
+
+      $("form-setpw").addEventListener("submit", (e) => {
+        e.preventDefault();
+        clearMsg();
+        const pw = $("new-pw").value;
+        if (pw.length < 10) { say("Use at least 10 characters."); return; }
+        if (pw !== $("new-pw2").value) { say("The passwords don't match."); return; }
+        busy(e.target, async () => {
+          const { error } = await client.auth.updateUser({ password: pw });
+          if (error) { say(error.message); return; }
+          location.replace(safeNext());
+        });
+      });
+
+      $("form-forgot").addEventListener("submit", (e) => {
+        e.preventDefault();
+        clearMsg();
+        const email = $("forgot-email").value.trim();
+        if (!email) { say("Enter your email."); return; }
+        busy(e.target, async () => {
+          const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/login" });
+          if (error) { say(error.message); return; }
+          say("If that email has access, a reset link is on its way.", "ok");
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

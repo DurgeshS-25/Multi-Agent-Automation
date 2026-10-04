@@ -1,11 +1,10 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Research Assistant</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --ink: #1a1c22;
@@ -41,11 +40,70 @@
     letter-spacing: -0.01em;
   }
   header p {
-    color: #9a9 da6;
     color: #9aa0ac;
     font-size: 15px;
     margin-top: 6px;
   }
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .account { color: #9aa0ac; font-size: 13px; white-space: nowrap; }
+  .account button {
+    background: none;
+    color: #9aa0ac;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 400;
+    text-decoration: underline;
+    margin-left: 8px;
+  }
+  .account button:hover:not(:disabled) { background: none; color: var(--paper); }
+
+  /* Pipeline toggle */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    color: #9aa0ac;
+    font-size: 13px;
+  }
+  .seg {
+    display: inline-flex;
+    border: 1px solid #363a45;
+    border-radius: 8px;
+    padding: 2px;
+  }
+  .seg button {
+    background: transparent;
+    color: #9aa0ac;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 6px;
+  }
+  .seg button:hover:not(:disabled) { background: transparent; color: var(--paper); }
+  .seg button[aria-pressed="true"] { background: var(--ink-soft); color: var(--paper); font-weight: 600; }
+
+  /* Stage timings */
+  .timings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: -10px 0 24px;
+  }
+  .chip {
+    font-size: 12px;
+    color: var(--text-soft);
+    background: #f1efe9;
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip b { color: var(--text); font-weight: 600; }
 
   /* Ask box */
   .ask {
@@ -231,13 +289,26 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Research Assistant</h1>
+    <div class="topbar">
+      <h1>Research Assistant</h1>
+      <div class="account" id="account" hidden>
+        <span id="account-email"></span><button id="signout" type="button">Sign out</button>
+      </div>
+    </div>
     <p>Ask a broad question. It plans sub-questions, searches the web, writes a cited report, and checks its own work.</p>
   </header>
 
   <div class="ask">
     <textarea id="q" rows="1" placeholder="Compare REST and GraphQL for a high-traffic API"></textarea>
     <button id="go">Research</button>
+  </div>
+
+  <div class="controls">
+    <span>Pipeline</span>
+    <div class="seg" role="group" aria-label="Pipeline">
+      <button type="button" data-pipeline="orchestrator" aria-pressed="true">Orchestrator</button>
+      <button type="button" data-pipeline="langgraph" aria-pressed="false">LangGraph</button>
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -248,6 +319,7 @@
 
   <div class="result" id="result">
     <div class="verdict" id="verdict"></div>
+    <div class="timings" id="timings"></div>
     <div class="q-echo" id="q-echo"></div>
     <div class="subs" id="subs"></div>
     <div class="report" id="report"></div>
@@ -262,6 +334,52 @@ const statusEl = document.getElementById('status');
 const statusText = document.getElementById('status-text');
 const errorEl = document.getElementById('error');
 const resultEl = document.getElementById('result');
+
+// ---- Sign-in (Supabase). If the server has sign-in disabled, this is a no-op. ----
+let authClient = null;
+
+const authReady = (async () => {
+  const config = await fetch('/auth/config').then(r => r.json()).catch(() => ({ enabled: false }));
+  if (!config.enabled) return;
+
+  authClient = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  });
+  const { data: { session } } = await authClient.auth.getSession();
+  if (!session) { goToLogin(); return; }
+
+  document.getElementById('account-email').textContent = session.user.email || '';
+  document.getElementById('account').hidden = false;
+  authClient.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') goToLogin(); });
+})();
+
+function goToLogin() {
+  location.replace('/login?next=' + encodeURIComponent(location.pathname));
+}
+
+async function authHeaders() {
+  await authReady;
+  if (!authClient) return {};
+  const { data: { session } } = await authClient.auth.getSession();  // refreshes if needed
+  if (!session) { goToLogin(); throw new Error('Signed out'); }
+  return { Authorization: 'Bearer ' + session.access_token };
+}
+
+document.getElementById('signout').addEventListener('click', async () => {
+  if (authClient) await authClient.auth.signOut();
+  goToLogin();
+});
+
+// ---- Pipeline toggle ----
+const ENDPOINTS = { orchestrator: '/research/report', langgraph: '/research/graph' };
+let pipeline = 'orchestrator';
+document.querySelectorAll('.seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    pipeline = btn.dataset.pipeline;
+    document.querySelectorAll('.seg button').forEach(b =>
+      b.setAttribute('aria-pressed', String(b === btn)));
+  });
+});
 
 // Auto-grow the textarea
 qEl.addEventListener('input', () => {
@@ -317,23 +435,25 @@ async function run() {
   const question = qEl.value.trim();
   if (question.length < 3) return;
 
+  const usedPipeline = pipeline;
   goEl.disabled = true;
   errorEl.classList.remove('on');
   resultEl.classList.remove('on');
   startStatus();
 
   try {
-    const res = await fetch('/research/report', {
+    const res = await fetch(ENDPOINTS[usedPipeline], {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ question }),
     });
+    if (res.status === 401) { goToLogin(); return; }
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}));
       throw new Error(detail.detail || `Request failed (${res.status})`);
     }
     const data = await res.json();
-    render(data);
+    render(data, usedPipeline);
   } catch (err) {
     errorEl.textContent = err.message.includes('RESOURCE_EXHAUSTED') || err.message.includes('429')
       ? 'The model is rate-limited right now. Wait a moment and try again.'
@@ -345,7 +465,7 @@ async function run() {
   }
 }
 
-function render(data) {
+function render(data, usedPipeline) {
   // Verdict strip
   const verdict = document.getElementById('verdict');
   const grounded = data.approved;
@@ -359,7 +479,15 @@ function render(data) {
     <span class="meta">${data.sources.length} sources</span>
     <span class="meta">·</span>
     <span class="meta">${data.iterations} synthesis ${data.iterations === 1 ? 'pass' : 'passes'}</span>
+    ${data.total_ms != null ? `<span class="meta">·</span><span class="meta">${(data.total_ms / 1000).toFixed(1)}s via ${usedPipeline === 'langgraph' ? 'LangGraph' : 'orchestrator'}</span>` : ''}
   `;
+
+  // Stage timings
+  const timings = document.getElementById('timings');
+  const stages = Object.entries(data.stage_timings_ms || {});
+  timings.innerHTML = stages.map(([name, ms]) =>
+    `<span class="chip">${escapeHtml(name.replace(/_/g, ' '))} <b>${(ms / 1000).toFixed(1)}s</b></span>`
+  ).join('');
 
   document.getElementById('q-echo').innerHTML = `<strong>${escapeHtml(data.question)}</strong>`;
 
