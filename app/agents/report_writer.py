@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from app.agents.extractor import SubQuestionFacts
 from app.agents.synthesizer import synthesizer, SynthesizedReport
 from app.agents.critic import critic
+from app.run_log import stage
 
 
 @dataclass
@@ -17,7 +18,11 @@ class FinalReport:
 
 class ReportWriter:
     """Runs the self-correction loop: synthesize, critique, and revise until
-    the critic approves or a revision cap is hit."""
+    the critic approves or a revision cap is hit.
+
+    Stage timings are recorded as "synthesizer" and "critic" (matching the
+    LangGraph node names); revision passes add to the same totals.
+    """
 
     def __init__(self, max_revisions: int = 2) -> None:
         self._max_revisions = max_revisions
@@ -26,23 +31,27 @@ class ReportWriter:
         self, question: str, findings: list[SubQuestionFacts]
     ) -> FinalReport:
         # Initial synthesis
-        draft: SynthesizedReport = await synthesizer.synthesize(question, findings)
+        with stage("synthesizer"):
+            draft: SynthesizedReport = await synthesizer.synthesize(question, findings)
         iterations = 1
 
-        verdict = await critic.critique(draft.report, findings)
+        with stage("critic"):
+            verdict = await critic.critique(draft.report, findings)
 
         # Revision loop: while not approved and under the cap, re-synthesize
         revisions = 0
         while not verdict.approved and revisions < self._max_revisions:
             revisions += 1
             iterations += 1
-            draft = await synthesizer.synthesize(
-                question,
-                findings,
-                previous_report=draft.report,
-                unsupported_claims=verdict.unsupported_claims,
-            )
-            verdict = await critic.critique(draft.report, findings)
+            with stage("synthesizer"):
+                draft = await synthesizer.synthesize(
+                    question,
+                    findings,
+                    previous_report=draft.report,
+                    unsupported_claims=verdict.unsupported_claims,
+                )
+            with stage("critic"):
+                verdict = await critic.critique(draft.report, findings)
 
         return FinalReport(
             report=draft.report,

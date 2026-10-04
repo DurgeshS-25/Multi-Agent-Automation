@@ -88,10 +88,9 @@ class Orchestrator:
 
         sub_questions, findings = await self._research(question)
 
-        # Synthesis + critique + any revisions. Split into "synthesizer" and
-        # "critic" once report_writer marks its own stages.
-        with stage("report_writer"):
-            final: FinalReport = await report_writer.write(question, findings)
+        # Synthesis + critique + any revisions; report_writer times its own
+        # "synthesizer" and "critic" stages.
+        final: FinalReport = await report_writer.write(question, findings)
         log.info(kv(
             event="report_done",
             approved=final.approved,
