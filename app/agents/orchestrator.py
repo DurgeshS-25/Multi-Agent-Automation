@@ -6,6 +6,7 @@ from app.agents.researcher import researcher
 from app.agents.extractor import extractor, SubQuestionFacts
 from app.agents.report_writer import report_writer, FinalReport
 from app.observability.logging_config import get_logger, kv
+from app.run_log import stage
 
 log = get_logger("orchestrator")
 
@@ -38,6 +39,9 @@ class Orchestrator:
     """Runs the research pipeline. Two entry points:
     - run(): plan -> parallel search -> parallel extract (facts by sub-question)
     - run_report(): the above + synthesize -> critique -> revise (final report)
+
+    Stage timings use the same names as the LangGraph nodes (planner,
+    researcher, extractor, ...) so the two pipelines compare directly.
     """
 
     async def _research(self, question: str):
@@ -45,18 +49,22 @@ class Orchestrator:
         if not question or not question.strip():
             raise OrchestratorError("Question cannot be empty.")
 
-        try:
-            sub_questions = planner_agent.plan(question)
-        except PlannerError as e:
-            raise OrchestratorError(f"Planning failed: {e}") from e
+        with stage("planner"):
+            try:
+                sub_questions = planner_agent.plan(question)
+            except PlannerError as e:
+                raise OrchestratorError(f"Planning failed: {e}") from e
         log.info(kv(event="planned", sub_questions=len(sub_questions)))
 
-        sq_results = await researcher.search_all(sub_questions)
+        # Timed around the whole fan-out, so parallel searches count once.
+        with stage("researcher"):
+            sq_results = await researcher.search_all(sub_questions)
         total_results = sum(len(r.results) for r in sq_results)
         search_errors = sum(1 for r in sq_results if r.error)
         log.info(kv(event="searched", results=total_results, errors=search_errors))
 
-        findings = await extractor.extract_all(sq_results)
+        with stage("extractor"):
+            findings = await extractor.extract_all(sq_results)
         total_facts = sum(len(f.facts) for f in findings)
         extract_errors = sum(1 for f in findings if f.error)
         log.info(kv(event="extracted", facts=total_facts, errors=extract_errors))
@@ -80,7 +88,10 @@ class Orchestrator:
 
         sub_questions, findings = await self._research(question)
 
-        final: FinalReport = await report_writer.write(question, findings)
+        # Synthesis + critique + any revisions. Split into "synthesizer" and
+        # "critic" once report_writer marks its own stages.
+        with stage("report_writer"):
+            final: FinalReport = await report_writer.write(question, findings)
         log.info(kv(
             event="report_done",
             approved=final.approved,
