@@ -1,0 +1,390 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Research Assistant</title>
+<style>
+  :root {
+    --ink: #1a1c22;
+    --ink-soft: #2a2d36;
+    --paper: #fbfaf7;
+    --paper-edge: #ece8e0;
+    --text: #23252b;
+    --text-soft: #6b6e78;
+    --grounded: #2f7d5b;
+    --grounded-bg: #e8f2ec;
+    --flag: #b06a3a;
+    --flag-bg: #f6ece2;
+    --rule: #dedbd3;
+    --accent: #3a4a6b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 48px 20px 96px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  /* Header */
+  header { margin-bottom: 32px; }
+  h1 {
+    color: var(--paper);
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    color: #9a9 da6;
+    color: #9aa0ac;
+    font-size: 15px;
+    margin-top: 6px;
+  }
+
+  /* Ask box */
+  .ask {
+    background: var(--ink-soft);
+    border: 1px solid #363a45;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--paper);
+    font: inherit;
+    font-size: 16px;
+    resize: none;
+    outline: none;
+    min-height: 24px;
+    max-height: 160px;
+  }
+  textarea::placeholder { color: #6c7280; }
+  button {
+    background: var(--paper);
+    color: var(--ink);
+    border: none;
+    border-radius: 7px;
+    padding: 9px 18px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  button:hover:not(:disabled) { background: #fff; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Status line while loading */
+  .status {
+    color: #9aa0ac;
+    font-size: 14px;
+    margin-top: 20px;
+    display: none;
+  }
+  .status.on { display: block; }
+  .status .dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--grounded);
+    margin-right: 8px;
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .status .dot { animation: none; }
+  }
+
+  /* Result surface */
+  .result {
+    background: var(--paper);
+    border-radius: 12px;
+    margin-top: 24px;
+    padding: 36px 40px 40px;
+    display: none;
+  }
+  .result.on { display: block; }
+
+  /* Verdict strip — the characteristic moment */
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 20px;
+  }
+  .badge.grounded { background: var(--grounded-bg); color: var(--grounded); }
+  .badge.flagged  { background: var(--flag-bg); color: var(--flag); }
+  .badge svg { width: 14px; height: 14px; }
+  .meta { color: var(--text-soft); font-size: 14px; }
+
+  .q-echo {
+    font-size: 15px;
+    color: var(--text-soft);
+    margin-bottom: 26px;
+  }
+  .q-echo strong { color: var(--text); font-weight: 600; }
+
+  /* Sub-questions — structural, not decorative */
+  .subs { margin-bottom: 30px; }
+  .subs h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+  }
+  .subs ol { list-style: none; counter-reset: sq; }
+  .subs li {
+    counter-increment: sq;
+    position: relative;
+    padding-left: 30px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .subs li::before {
+    content: counter(sq);
+    position: absolute;
+    left: 0; top: 1px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: #eef1f6;
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    display: grid;
+    place-items: center;
+  }
+
+  /* The report — long-form serif reading */
+  .report {
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.72;
+    color: #26282e;
+  }
+  .report p { margin-bottom: 16px; }
+  .report strong, .report b { font-weight: 700; }
+  .report h3, .report h2 {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 24px 0 10px;
+    letter-spacing: 0.01em;
+  }
+
+  /* Sources */
+  .sources {
+    margin-top: 30px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+  }
+  .sources h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+  }
+  .sources ol { padding-left: 22px; }
+  .sources li { margin-bottom: 6px; font-size: 13px; }
+  .sources a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .sources a:hover { text-decoration: underline; }
+
+  /* Error */
+  .error {
+    background: var(--flag-bg);
+    color: var(--flag);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-top: 24px;
+    font-size: 15px;
+    display: none;
+  }
+  .error.on { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Research Assistant</h1>
+    <p>Ask a broad question. It plans sub-questions, searches the web, writes a cited report, and checks its own work.</p>
+  </header>
+
+  <div class="ask">
+    <textarea id="q" rows="1" placeholder="Compare REST and GraphQL for a high-traffic API"></textarea>
+    <button id="go">Research</button>
+  </div>
+
+  <div class="status" id="status">
+    <span class="dot"></span><span id="status-text">Planning sub-questions…</span>
+  </div>
+
+  <div class="error" id="error"></div>
+
+  <div class="result" id="result">
+    <div class="verdict" id="verdict"></div>
+    <div class="q-echo" id="q-echo"></div>
+    <div class="subs" id="subs"></div>
+    <div class="report" id="report"></div>
+    <div class="sources" id="sources"></div>
+  </div>
+</div>
+
+<script>
+const qEl = document.getElementById('q');
+const goEl = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const statusText = document.getElementById('status-text');
+const errorEl = document.getElementById('error');
+const resultEl = document.getElementById('result');
+
+// Auto-grow the textarea
+qEl.addEventListener('input', () => {
+  qEl.style.height = 'auto';
+  qEl.style.height = Math.min(qEl.scrollHeight, 160) + 'px';
+});
+
+qEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run(); }
+});
+goEl.addEventListener('click', run);
+
+// Rotating status messages to reflect the pipeline stages
+const stages = [
+  'Planning sub-questions…',
+  'Searching the web in parallel…',
+  'Extracting facts from sources…',
+  'Writing the report…',
+  'Checking every claim against sources…',
+];
+let stageTimer = null;
+
+function startStatus() {
+  let i = 0;
+  statusText.textContent = stages[0];
+  statusEl.classList.add('on');
+  stageTimer = setInterval(() => {
+    i = Math.min(i + 1, stages.length - 1);
+    statusText.textContent = stages[i];
+  }, 6000);
+}
+function stopStatus() {
+  statusEl.classList.remove('on');
+  if (stageTimer) clearInterval(stageTimer);
+}
+
+// Minimal, safe markdown-ish rendering for the report text
+function renderReport(text) {
+  const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return text.split(/\n\n+/).map(block => {
+    block = block.trim();
+    if (!block) return '';
+    // Markdown heading
+    const h = block.match(/^#{2,3}\s+(.*)$/);
+    if (h) return `<h3>${esc(h[1])}</h3>`;
+    // **bold** inline
+    let html = esc(block).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    return `<p>${html}</p>`;
+  }).join('');
+}
+
+async function run() {
+  const question = qEl.value.trim();
+  if (question.length < 3) return;
+
+  goEl.disabled = true;
+  errorEl.classList.remove('on');
+  resultEl.classList.remove('on');
+  startStatus();
+
+  try {
+    const res = await fetch('/research/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `Request failed (${res.status})`);
+    }
+    const data = await res.json();
+    render(data);
+  } catch (err) {
+    errorEl.textContent = err.message.includes('RESOURCE_EXHAUSTED') || err.message.includes('429')
+      ? 'The model is rate-limited right now. Wait a moment and try again.'
+      : err.message;
+    errorEl.classList.add('on');
+  } finally {
+    stopStatus();
+    goEl.disabled = false;
+  }
+}
+
+function render(data) {
+  // Verdict strip
+  const verdict = document.getElementById('verdict');
+  const grounded = data.approved;
+  const check = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const flag = '<svg viewBox="0 0 16 16" fill="none"><path d="M8 5v4M8 11.5v.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  verdict.innerHTML = `
+    <span class="badge ${grounded ? 'grounded' : 'flagged'}">
+      ${grounded ? check : flag}
+      ${grounded ? 'Grounded' : 'Unverified claims remain'}
+    </span>
+    <span class="meta">${data.sources.length} sources</span>
+    <span class="meta">·</span>
+    <span class="meta">${data.iterations} synthesis ${data.iterations === 1 ? 'pass' : 'passes'}</span>
+  `;
+
+  document.getElementById('q-echo').innerHTML = `<strong>${escapeHtml(data.question)}</strong>`;
+
+  // Sub-questions
+  const subs = document.getElementById('subs');
+  if (data.sub_questions && data.sub_questions.length) {
+    subs.innerHTML = '<h2>Researched as</h2><ol>' +
+      data.sub_questions.map(s => `<li>${escapeHtml(s)}</li>`).join('') + '</ol>';
+  } else { subs.innerHTML = ''; }
+
+  document.getElementById('report').innerHTML = renderReport(data.report);
+
+  // Sources
+  const sources = document.getElementById('sources');
+  if (data.sources && data.sources.length) {
+    sources.innerHTML = '<h2>Sources</h2><ol>' +
+      data.sources.map(u => `<li><a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a></li>`).join('') + '</ol>';
+  } else { sources.innerHTML = ''; }
+
+  resultEl.classList.add('on');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

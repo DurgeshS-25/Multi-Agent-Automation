@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
+from pathlib import Path
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from app.search.tavily_client import tavily_search, SearchError
 from app.llm.gemini_client import gemini_summarizer, SummarizerError
 from app.agents.planner import planner_agent, PlannerError
@@ -12,6 +14,10 @@ app = FastAPI(
     description="Research assistant API — plan, search, synthesize, and self-critique cited reports.",
     version="0.5.0",
 )
+
+@app.get("/",include_in_schema=False)
+def root():
+    return RedirectResponse(url="/ui/")
 
 
 # ---- Request / Response schemas ----
@@ -204,3 +210,5 @@ async def research_graph_endpoint(request: ReportRequest) -> GraphReportResponse
         approved=final_state.get("approved", False),
         iterations=final_state.get("iterations", 0),
     )
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")   
